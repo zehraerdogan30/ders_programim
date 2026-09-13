@@ -1,11 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
 import '../models/course.dart';
 import '../models/note.dart';
 import '../models/todo.dart';
 
-class AppProvider extends ChangeNotifier {
+class AppProvider with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -14,32 +17,71 @@ class AppProvider extends ChangeNotifier {
   List<Note> _notes = [];
   List<Todo> _todos = [];
 
+  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _courseSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _noteSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _todoSubscription;
+
+  bool _isEnglish = false;
+  bool get isEnglish => _isEnglish;
+
   User? get user => _user;
-  List<Course> get courses => _courses;
-  List<Note> get notes => _notes;
-  List<Todo> get todos => _todos;
+  List<Course> get courses => List.unmodifiable(_courses);
+  List<Note> get notes => List.unmodifiable(_notes);
+  List<Todo> get todos => List.unmodifiable(_todos);
 
   AppProvider() {
-    _auth.authStateChanges().listen((User? newUser) {
+    _authSubscription = _auth.authStateChanges().listen((newUser) {
       if (newUser != null && newUser.emailVerified) {
-        _user = newUser;
-        fetchCourses();
-        fetchNotes();
-        fetchTodos();
+        _activateUser(newUser);
       } else {
-        _user = null;
-        _courses = [];
-        _notes = [];
-        _todos = [];
+        _clearSessionData();
       }
-      notifyListeners();
     });
   }
 
-  // --- Auth İşlemleri ---
+  void toggleLanguage() {
+    _isEnglish = !_isEnglish;
+    notifyListeners();
+  }
+
+  void _activateUser(User newUser) {
+    final bool isSameUser = _user?.uid == newUser.uid;
+    _user = newUser;
+
+    if (!isSameUser ||
+        _courseSubscription == null ||
+        _noteSubscription == null ||
+        _todoSubscription == null) {
+      fetchCourses();
+      fetchNotes();
+      fetchTodos();
+    }
+
+    notifyListeners();
+  }
+
+  void _clearSessionData() {
+    _cancelDataSubscriptions();
+    _user = null;
+    _courses = [];
+    _notes = [];
+    _todos = [];
+    notifyListeners();
+  }
+
+  void _cancelDataSubscriptions() {
+    _courseSubscription?.cancel();
+    _noteSubscription?.cancel();
+    _todoSubscription?.cancel();
+    _courseSubscription = null;
+    _noteSubscription = null;
+    _todoSubscription = null;
+  }
+
   Future<String?> signUp(String email, String password) async {
     try {
-      UserCredential credential = await _auth.createUserWithEmailAndPassword(
+      final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -49,45 +91,49 @@ class AppProvider extends ChangeNotifier {
           'email': email,
           'createdAt': FieldValue.serverTimestamp(),
         });
-
         await credential.user!.sendEmailVerification();
       }
 
       await _auth.signOut();
-      _user = null;
-      notifyListeners();
-
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      return e.message ?? e.code;
+    } on FirebaseException catch (e) {
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
     }
   }
 
   Future<String?> signIn(String email, String password) async {
     try {
-      UserCredential credential = await _auth.signInWithEmailAndPassword(
+      final credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
       await credential.user?.reload();
-      User? updatedUser = _auth.currentUser;
+      final updatedUser = _auth.currentUser;
 
       if (updatedUser != null && !updatedUser.emailVerified) {
         await _auth.signOut();
-        _user = null;
-        notifyListeners();
-        return 'E-posta adresiniz henüz doğrulanmadı! Lütfen gelen kutunuzdaki onay bağlantısına tıklayın.';
+        return _isEnglish
+            ? 'Your email address is not verified yet. Please click the verification link in your inbox.'
+            : 'E-posta adresiniz henüz doğrulanmadı! Lütfen gelen kutunuzdaki onay bağlantısına tıklayın.';
       }
 
-      _user = updatedUser;
-      fetchCourses();
-      fetchNotes();
-      fetchTodos();
-      notifyListeners();
+      if (updatedUser == null) {
+        return _isEnglish
+            ? 'Unable to read the signed-in user. Please try again.'
+            : 'Giriş yapan kullanıcı bilgisi alınamadı. Lütfen tekrar deneyin.';
+      }
+
+      _activateUser(updatedUser);
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
     }
   }
 
@@ -96,38 +142,48 @@ class AppProvider extends ChangeNotifier {
       await _auth.sendPasswordResetEmail(email: email);
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
     }
   }
 
-  // BURASI DÜZELTİLDİ: Parametreler isteğe bağlı yapıldı ([String? email, String? password])
-  Future<String?> resendVerificationEmail(
-      [String? email, String? password]) async {
+  Future<String?> resendVerificationEmail([
+    String? email,
+    String? password,
+  ]) async {
     try {
       if (email != null &&
           password != null &&
           email.isNotEmpty &&
           password.isNotEmpty) {
-        UserCredential credential = await _auth.signInWithEmailAndPassword(
+        final credential = await _auth.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
         await credential.user?.sendEmailVerification();
         await _auth.signOut();
-        _user = null;
-        notifyListeners();
-        return null;
-      } else if (_auth.currentUser != null) {
-        await _auth.currentUser!.sendEmailVerification();
         return null;
       }
-      return 'Lütfen e-posta ve şifrenizi kontrol edin.';
+
+      final currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        await currentUser.sendEmailVerification();
+        return null;
+      }
+
+      return _isEnglish
+          ? 'Please check your email and password.'
+          : 'Lütfen e-posta ve şifrenizi kontrol edin.';
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
     }
   }
 
   Future<void> signOut() async {
+    _cancelDataSubscriptions();
     await _auth.signOut();
     _user = null;
     _courses = [];
@@ -136,15 +192,19 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- Courses ---
   void fetchCourses() {
-    if (_user == null) return;
-    _firestore
+    final user = _user;
+    if (user == null) return;
+
+    _courseSubscription?.cancel();
+    final uid = user.uid;
+    _courseSubscription = _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(uid)
         .collection('courses')
         .snapshots()
         .listen((snapshot) {
+      if (_user?.uid != uid) return;
       _courses = snapshot.docs.map((doc) {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
@@ -155,47 +215,53 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> addCourse(Course course) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('courses')
         .add(course.toMap());
   }
 
   Future<void> updateCourse(Course course) async {
-    if (_user == null || course.id.isEmpty) return;
+    final user = _user;
+    if (user == null || course.id.isEmpty) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('courses')
         .doc(course.id)
         .update(course.toMap());
   }
 
   Future<void> removeCourse(String id) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null || id.isEmpty) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('courses')
         .doc(id)
         .delete();
   }
 
   Future<void> loadMySelectedCourses() async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null) return;
 
     final collection =
-        _firestore.collection('users').doc(_user!.uid).collection('courses');
+        _firestore.collection('users').doc(user.uid).collection('courses');
     final snapshot = await collection.get();
-    final batch = _firestore.batch();
-    for (var doc in snapshot.docs) {
-      batch.delete(doc.reference);
-    }
-    await batch.commit();
 
-    // 2. Tam 9 dersi veritabanına ekle
+    if (snapshot.docs.isNotEmpty) {
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+
     final myCourses = [
       Course(
         id: '',
@@ -298,20 +364,24 @@ class AppProvider extends ChangeNotifier {
       ),
     ];
 
-    for (var course in myCourses) {
+    for (final course in myCourses) {
       await addCourse(course);
     }
   }
 
-  // --- Notes ---
   void fetchNotes() {
-    if (_user == null) return;
-    _firestore
+    final user = _user;
+    if (user == null) return;
+
+    _noteSubscription?.cancel();
+    final uid = user.uid;
+    _noteSubscription = _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(uid)
         .collection('notes')
         .snapshots()
         .listen((snapshot) {
+      if (_user?.uid != uid) return;
       _notes = snapshot.docs.map((doc) {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
@@ -322,33 +392,39 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> addNote(Note note) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('notes')
         .add(note.toMap());
   }
 
   Future<void> removeNote(String id) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null || id.isEmpty) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('notes')
         .doc(id)
         .delete();
   }
 
-  // --- Todos ---
   void fetchTodos() {
-    if (_user == null) return;
-    _firestore
+    final user = _user;
+    if (user == null) return;
+
+    _todoSubscription?.cancel();
+    final uid = user.uid;
+    _todoSubscription = _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(uid)
         .collection('todos')
         .snapshots()
         .listen((snapshot) {
+      if (_user?.uid != uid) return;
       _todos = snapshot.docs.map((doc) {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
@@ -359,31 +435,41 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> addTodo(Todo todo) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('todos')
         .add(todo.toMap());
   }
 
   Future<void> toggleTodo(String id, bool isCompleted) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null || id.isEmpty) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('todos')
         .doc(id)
         .update({'isCompleted': isCompleted});
   }
 
   Future<void> removeTodo(String id) async {
-    if (_user == null) return;
+    final user = _user;
+    if (user == null || id.isEmpty) return;
     await _firestore
         .collection('users')
-        .doc(_user!.uid)
+        .doc(user.uid)
         .collection('todos')
         .doc(id)
         .delete();
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _cancelDataSubscriptions();
+    super.dispose();
   }
 }

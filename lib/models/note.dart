@@ -1,20 +1,21 @@
 class Note {
-  final String id;
-  final String title;
-  final String content;
-  final String date;
-  final String courseTitle;
+  String id;
+  String title;
+  String content;
+  String date;
+  String courseTitle;
 
   Note({
     required this.id,
     required this.title,
     required this.content,
     required this.date,
-    this.courseTitle = 'Genel'
+    required this.courseTitle,
   });
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'title': title,
       'content': content,
       'date': date,
@@ -24,11 +25,11 @@ class Note {
 
   factory Note.fromMap(Map<String, dynamic> map) {
     return Note(
-      id: map['id'] ?? '',
-      title: map['title'] ?? '',
-      content: map['content'] ?? '',
-      date: map['date'] ?? '',
-      courseTitle: map['courseTitle'] ?? 'Genel',
+      id: map['id']?.toString() ?? '',
+      title: map['title']?.toString() ?? '',
+      content: map['content']?.toString() ?? '',
+      date: map['date']?.toString() ?? '',
+      courseTitle: map['courseTitle']?.toString() ?? 'Genel',
     );
   }
 }

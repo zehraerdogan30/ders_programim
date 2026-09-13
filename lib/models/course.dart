@@ -18,29 +18,38 @@ class GradeItem {
   }
 
   factory GradeItem.fromMap(Map<String, dynamic> map) {
+    final rawWeight = map['weight'];
+    final rawScore = map['score'];
+
     return GradeItem(
-      name: map['name'] ?? '',
-      weight: (map['weight'] as num?)?.toDouble() ?? 0.0,
-      score: (map['score'] as num?)?.toDouble(),
+      name: map['name']?.toString() ?? '',
+      weight: rawWeight is num
+          ? rawWeight.toDouble()
+          : double.tryParse(rawWeight?.toString() ?? '') ?? 0.0,
+      score: rawScore == null
+          ? null
+          : rawScore is num
+              ? rawScore.toDouble()
+              : double.tryParse(rawScore.toString()),
     );
   }
 }
 
 class Course {
-  final String id;
-  final String title;
-  final String instructor;
-  final String instructorEmail;
-  final String room;
-  final String day;
-  final String startTime;
-  final String endTime;
-  final String duration;
-  final bool isOnline;
-  final String classLink;
-  final String driveLink;
-  final int akts;
-  final List<GradeItem> gradeItems;
+  String id;
+  String title;
+  String instructor;
+  String instructorEmail;
+  String room;
+  String day;
+  String startTime;
+  String endTime;
+  String duration;
+  bool isOnline;
+  String classLink;
+  String driveLink;
+  int akts;
+  List<GradeItem> gradeItems;
 
   Course({
     required this.id,
@@ -52,18 +61,20 @@ class Course {
     required this.startTime,
     required this.endTime,
     required this.duration,
-    this.isOnline = false,
+    required this.isOnline,
     this.classLink = '',
     this.driveLink = '',
     this.akts = 4,
     List<GradeItem>? gradeItems,
-  }) : gradeItems = gradeItems ?? [
-          GradeItem(name: 'Vize', weight: 40),
-          GradeItem(name: 'Final', weight: 60),
-        ];
+  }) : gradeItems = gradeItems ??
+            [
+              GradeItem(name: 'Vize', weight: 40),
+              GradeItem(name: 'Final', weight: 60),
+            ];
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'title': title,
       'instructor': instructor,
       'instructorEmail': instructorEmail,
@@ -76,34 +87,43 @@ class Course {
       'classLink': classLink,
       'driveLink': driveLink,
       'akts': akts,
-      'gradeItems': gradeItems.map((item) => item.toMap()).toList(),
+      'gradeItems': gradeItems.map((x) => x.toMap()).toList(),
     };
   }
 
   factory Course.fromMap(Map<String, dynamic> map) {
-    var rawItems = map['gradeItems'] as List?;
-    List<GradeItem> parsedItems = rawItems != null
-        ? rawItems.map((i) => GradeItem.fromMap(Map<String, dynamic>.from(i))).toList()
-        : [
-            GradeItem(name: 'Vize', weight: 40),
-            GradeItem(name: 'Final', weight: 60),
-          ];
+    final rawAkts = map['akts'];
+    final rawGradeItems = map['gradeItems'];
+    final rawOnline = map['isOnline'];
 
     return Course(
-      id: map['id'] ?? '',
-      title: map['title'] ?? '',
-      instructor: map['instructor'] ?? '',
-      instructorEmail: map['instructorEmail'] ?? '',
-      room: map['room'] ?? '',
-      day: map['day'] ?? '',
-      startTime: map['startTime'] ?? '',
-      endTime: map['endTime'] ?? '',
-      duration: map['duration'] ?? '',
-      isOnline: map['isOnline'] ?? false,
-      classLink: map['classLink'] ?? '',
-      driveLink: map['driveLink'] ?? '',
-      akts: map['akts'] ?? 4,
-      gradeItems: parsedItems,
+      id: map['id']?.toString() ?? '',
+      title: map['title']?.toString() ?? '',
+      instructor: map['instructor']?.toString() ?? '',
+      instructorEmail: map['instructorEmail']?.toString() ?? '',
+      room: map['room']?.toString() ?? '',
+      day: map['day']?.toString() ?? 'Pazartesi',
+      startTime: map['startTime']?.toString() ?? '09:00',
+      endTime: map['endTime']?.toString() ?? '11:50',
+      duration: map['duration']?.toString() ?? '2s 50dk',
+      isOnline: rawOnline is bool
+          ? rawOnline
+          : rawOnline?.toString().toLowerCase() == 'true',
+      classLink: map['classLink']?.toString() ?? '',
+      driveLink: map['driveLink']?.toString() ?? '',
+      akts: rawAkts is num
+          ? rawAkts.toInt()
+          : int.tryParse(rawAkts?.toString() ?? '') ?? 4,
+      gradeItems: rawGradeItems is List
+          ? rawGradeItems
+              .whereType<Map>()
+              .map(
+                (item) => GradeItem.fromMap(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
+              .toList()
+          : null,
     );
   }
 }
