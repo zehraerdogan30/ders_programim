@@ -11,161 +11,209 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  String selectedDay = 'Tümü';
-  String searchQuery = '';
-  bool isTableView = true;
+  String _selectedDayFilter = 'All';
+  bool _isGridView = true;
+  final TextEditingController _searchController = TextEditingController();
 
-  final List<String> days = [
-    'Tümü',
-    'Pazartesi',
-    'Salı',
-    'Çarşamba',
-    'Perşembe',
-    'Cuma',
-    'Cumartesi',
-    'Pazar'
-  ];
-  final List<String> alldays = [
-    'Pazartesi',
-    'Salı',
-    'Çarşamba',
-    'Perşembe',
-    'Cuma',
-    'Cumartesi',
-    'Pazar'
-  ];
-  // Saat aralıkları (09:00 - 21:00)
-  final double slotHeight = 55.0; // Her 1 saatlik dilimin yüksekliği
-  final int startHour = 9;
-  final int endHour = 21;
+  final Map<String, String> _dayTranslations = {
+    'Tümü': 'All',
+    'Pazartesi': 'Monday',
+    'Salı': 'Tuesday',
+    'Çarşamba': 'Wednesday',
+    'Perşembe': 'Thursday',
+    'Cuma': 'Friday',
+    'Cumartesi': 'Saturday',
+    'Pazar': 'Sunday',
+  };
 
-  Color _getDayColor(String day) {
-    switch (day) {
-      case 'Pazartesi':
-        return const Color(0xFF4A90E2);
-      case 'Salı':
-        return const Color(0xFF9013FE);
-      case 'Çarşamba':
-        return const Color(0xFF50E3C2);
-      case 'Perşembe':
-        return const Color(0xFFF5A623);
-      case 'Cuma':
-        return const Color(0xFFE91E63);
-      case 'Cumartesi':
-        return const Color.fromARGB(255, 57, 73, 162);
-      case 'Pazar':
-        return const Color.fromARGB(255, 133, 55, 81);
-      default:
-        return const Color(0xFF6C5CE7);
+  String _getTranslatedDay(String day, bool isEn) {
+    if (!isEn) return day;
+    return _dayTranslations[day] ?? day;
+  }
+
+  int? _timeToMinutes(String value) {
+    final parts = value.trim().split(':');
+    if (parts.length != 2) return null;
+
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+    return (hour * 60) + minute;
+  }
+
+  String _calculateDurationText(String startTime, String endTime) {
+    final start = _timeToMinutes(startTime);
+    final end = _timeToMinutes(endTime);
+    if (start == null || end == null || end <= start) return '';
+
+    final duration = end - start;
+    final hours = duration ~/ 60;
+    final minutes = duration % 60;
+    if (minutes == 0) return '${hours}s';
+    if (hours == 0) return '${minutes}dk';
+    return '${hours}s ${minutes}dk';
+  }
+
+
+  Future<void> _pickTime(
+    BuildContext context,
+    TextEditingController controller,
+  ) async {
+    TimeOfDay initialTime = TimeOfDay.now();
+    final current = _timeToMinutes(controller.text);
+
+    if (current != null) {
+      initialTime = TimeOfDay(
+        hour: current ~/ 60,
+        minute: current % 60,
+      );
     }
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            alwaysUse24HourFormat: true,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      final hour = picked.hour.toString().padLeft(2, '0');
+      final minute = picked.minute.toString().padLeft(2, '0');
+      controller.text = '$hour:$minute';
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
+    final isEn = provider.isEnglish;
+    final courses = provider.courses;
 
-    List<Course> filteredCourses = provider.courses.where((course) {
-      bool matchesDay = selectedDay == 'Tümü' || course.day == selectedDay;
-      bool matchesSearch = course.title
-              .toLowerCase()
-              .contains(searchQuery.toLowerCase()) ||
-          course.instructor.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          course.room.toLowerCase().contains(searchQuery.toLowerCase());
-      return matchesDay && matchesSearch;
-    }).toList();
+    final List<String> days = isEn
+        ? [
+            'All',
+            'Monday',
+            'Tuesday',
+            'Wednesday',
+            'Thursday',
+            'Friday',
+            'Saturday',
+            'Sunday',
+          ]
+        : [
+            'Tümü',
+            'Pazartesi',
+            'Salı',
+            'Çarşamba',
+            'Perşembe',
+            'Cuma',
+            'Cumartesi',
+            'Pazar',
+          ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141923),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E2638),
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Haftalık Program',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                    color: Colors.white)),
-            Text('${provider.courses.length} ders kayıtlı',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-                isTableView ? Icons.view_list_rounded : Icons.grid_on_rounded,
-                color: isTableView ? const Color(0xFF6C5CE7) : Colors.white),
-            tooltip: isTableView ? 'Liste Görünümü' : 'Haftalık Tablo Görünümü',
-            onPressed: () => setState(() => isTableView = !isTableView),
-          ),
-          // Yenile Butonunun Yeni Hali:
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Verileri Yenile',
-            onPressed: () => provider
-                .fetchCourses(), // Sabit dersleri yüklemek yerine veritabanını günceller
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: () => provider.signOut(),
-          ),
-        ],
+      backgroundColor: const Color(0xFF131824),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFF6C5CE7),
+        onPressed: () => _showAddOrEditCourseDialog(context, isEn: isEn),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
         child: Column(
           children: [
-            // Arama Kutusu
-            TextField(
-              style: const TextStyle(color: Colors.white),
-              onChanged: (val) => setState(() => searchQuery = val),
-              decoration: InputDecoration(
-                hintText: 'Ders, akademisyen veya sınıf ara...',
-                hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                filled: true,
-                fillColor: const Color(0xFF1E2638),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none),
-              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    style: const TextStyle(color: Colors.white),
+                    onChanged: (val) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: isEn
+                          ? 'Search course, instructor or room...'
+                          : 'Ders, akademisyen veya sınıf ara...',
+                      hintStyle: const TextStyle(color: Colors.grey),
+                      prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                      filled: true,
+                      fillColor: const Color(0xFF1E2638),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(
+                    _isGridView
+                        ? Icons.format_list_bulleted
+                        : Icons.grid_on_rounded,
+                    color: const Color(0xFF6C5CE7),
+                  ),
+                  tooltip: _isGridView
+                      ? (isEn ? 'List View' : 'Liste Görünümü')
+                      : (isEn ? 'Grid View' : 'Haftalık Program'),
+                  onPressed: () => setState(() => _isGridView = !_isGridView),
+                ),
+              ],
             ),
-            const SizedBox(height: 14),
-
-            // Gün Filtreleri
+            const SizedBox(height: 12),
             SizedBox(
-              height: 38,
+              height: 40,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: days.length,
                 itemBuilder: (context, index) {
                   final day = days[index];
-                  int count = day == 'Tümü'
-                      ? provider.courses.length
-                      : provider.courses.where((c) => c.day == day).length;
-                  bool isSelected = selectedDay == day;
+                  final isSelected =
+                      _selectedDayFilter == day ||
+                      (_selectedDayFilter == 'All' &&
+                          day == (isEn ? 'All' : 'Tümü'));
+                  final count = (day == 'All' || day == 'Tümü')
+                      ? courses.length
+                      : courses
+                            .where(
+                              (c) =>
+                                  _getTranslatedDay(c.day, isEn) == day ||
+                                  c.day == day,
+                            )
+                            .length;
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: ChoiceChip(
-                      selected: isSelected,
-                      showCheckmark: false,
                       label: Text('$day ($count)'),
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : Colors.grey.shade400,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 13,
-                      ),
+                      selected: isSelected,
                       selectedColor: const Color(0xFF6C5CE7),
                       backgroundColor: const Color(0xFF1E2638),
-                      side: BorderSide.none,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      onSelected: (selected) {
-                        if (selected) setState(() => selectedDay = day);
+                      labelStyle: TextStyle(
+                        color: isSelected ? Colors.white : Colors.grey,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                      onSelected: (bool selected) {
+                        setState(() {
+                          _selectedDayFilter = day;
+                        });
                       },
                     ),
                   );
@@ -173,395 +221,56 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Ana İçerik
             Expanded(
-              child: isTableView
-                  ? _buildContinuousTimetable(filteredCourses)
-                  : _buildListView(filteredCourses, provider),
+              child: _isGridView
+                  ? _buildTimetableGrid(courses, isEn)
+                  : _buildDailyListView(courses, isEn),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF6C5CE7),
-        onPressed: () => _showCourseFormDialog(context),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
     );
   }
 
-  // BÖLÜNMEYEN TEK PARÇA HAFTALIK TABLO GÖRÜNÜMÜ
-  Widget _buildContinuousTimetable(List<Course> courses) {
-    final activeDays = selectedDay == 'Tümü' ? alldays : [selectedDay];
-    final hours = List.generate(endHour - startHour, (i) => startHour + i);
+  Widget _buildDailyListView(List<Course> allCourses, bool isEn) {
+    final filteredCourses = _getFilteredCourses(allCourses, isEn);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2638),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Column(
-        children: [
-          // Sütun Başlıkları
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF252E42),
-              borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(12), topRight: Radius.circular(12)),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(
-                    width: 55,
-                    child: Center(
-                        child: Text('Saat',
-                            style: TextStyle(
-                                color: Colors.grey,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11)))),
-                ...activeDays.map((day) => Expanded(
-                      child: Center(
-                        child: Text(day,
-                            style: TextStyle(
-                                color: _getDayColor(day),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12)),
-                      ),
-                    )),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Colors.white12),
-
-          // Çizelge Alanı
-          Expanded(
-            child: SingleChildScrollView(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Sol Saat Çizgisi
-                  SizedBox(
-                    width: 55,
-                    child: Column(
-                      children: hours.map((hour) {
-                        return Container(
-                          height: slotHeight,
-                          alignment: Alignment.topCenter,
-                          padding: const EdgeInsets.only(top: 4),
-                          decoration: const BoxDecoration(
-                            border: Border(
-                                bottom: BorderSide(
-                                    color: Colors.white10, width: 0.5)),
-                          ),
-                          child: Text(
-                            '${hour.toString().padLeft(2, '0')}:00',
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 11),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-
-                  // Gün Sütunları ve Çakışmasız Blok Ders Kartları
-                  ...activeDays.map((day) {
-                    final dayCourses =
-                        courses.where((c) => c.day == day).toList();
-
-                    return Expanded(
-                      child: Stack(
-                        children: [
-                          // Arka Plan Çizgileri
-                          Column(
-                            children: hours.map((_) {
-                              return Container(
-                                height: slotHeight,
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    left: BorderSide(
-                                        color: Colors.white10, width: 0.5),
-                                    bottom: BorderSide(
-                                        color: Colors.white10, width: 0.5),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-
-                          // Tek Parça Ders Blokları
-                          ...dayCourses.map((course) {
-                            int startH =
-                                int.parse(course.startTime.split(':')[0]);
-                            int startM =
-                                int.parse(course.startTime.split(':')[1]);
-                            int endH = int.parse(course.endTime.split(':')[0]);
-                            int endM = int.parse(course.endTime.split(':')[1]);
-
-                            double topOffset =
-                                ((startH - startHour) + (startM / 60.0)) *
-                                    slotHeight;
-                            double durationInHours = (endH + (endM / 60.0)) -
-                                (startH + (startM / 60.0));
-                            double blockHeight = durationInHours * slotHeight;
-
-                            final dayColor = _getDayColor(course.day);
-
-                            return Positioned(
-                              top: topOffset + 2,
-                              left: 2,
-                              right: 2,
-                              height: blockHeight - 4,
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: dayColor.withOpacity(0.25),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border:
-                                      Border.all(color: dayColor, width: 1.5),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      course.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 11,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${course.startTime} - ${course.endTime}',
-                                      style: TextStyle(
-                                          color: Colors.white.withOpacity(0.9),
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w500),
-                                    ),
-                                    const Spacer(),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                            course.isOnline
-                                                ? Icons.videocam
-                                                : Icons.location_on,
-                                            size: 10,
-                                            color: dayColor),
-                                        const SizedBox(width: 2),
-                                        Expanded(
-                                          child: Text(
-                                            course.room,
-                                            style: TextStyle(
-                                                color: dayColor,
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // KART/LİSTE GÖRÜNÜMÜ
-  Widget _buildListView(List<Course> courses, AppProvider provider) {
-    if (courses.isEmpty) {
-      return const Center(
-          child: Text('Gösterilecek ders bulunamadı.',
-              style: TextStyle(color: Colors.grey)));
+    if (filteredCourses.isEmpty) {
+      return Center(
+        child: Text(
+          isEn ? 'No registered courses found.' : 'Kayıtlı ders bulunamadı.',
+          style: const TextStyle(color: Colors.grey, fontSize: 14),
+        ),
+      );
     }
 
     return ListView.builder(
-      itemCount: courses.length,
+      physics: const BouncingScrollPhysics(),
+      itemCount: filteredCourses.length,
       itemBuilder: (context, index) {
-        final course = courses[index];
-        final dayColor = _getDayColor(course.day);
+        final course = filteredCourses[index];
+        final color = _getCourseColor(course.title);
+        final gpa = _calculateCourseAverage(course);
 
-        return Container(
+        return Card(
+          color: const Color(0xFF1E2638),
           margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E2638),
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
           ),
-          child: InkWell(
-            onTap: () =>
-                _showCourseDetailDialog(context, course), // DERS DETAYINI AÇAR
-            borderRadius: BorderRadius.circular(14),
-            child: IntrinsicHeight(
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    decoration: BoxDecoration(
-                        color: dayColor,
-                        borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(14),
-                            bottomLeft: Radius.circular(14))),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                  child: Text(course.title,
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15),
-                                      overflow: TextOverflow.ellipsis)),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                    color: dayColor.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(8)),
-                                child: Text(course.day,
-                                    style: TextStyle(
-                                        color: dayColor,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 11)),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time_rounded,
-                                  size: 14, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text('${course.startTime} - ${course.endTime}',
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 13)),
-                              const SizedBox(width: 16),
-                              Icon(
-                                  course.isOnline
-                                      ? Icons.videocam_rounded
-                                      : Icons.location_on_rounded,
-                                  size: 14,
-                                  color: course.isOnline
-                                      ? Colors.orangeAccent
-                                      : Colors.tealAccent),
-                              const SizedBox(width: 4),
-                              Text(course.room,
-                                  style: TextStyle(
-                                      color: course.isOnline
-                                          ? Colors.orangeAccent
-                                          : Colors.tealAccent,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500)),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.person_outline_rounded,
-                                      size: 14, color: Colors.grey),
-                                  const SizedBox(width: 4),
-                                  Text(course.instructor,
-                                      style: const TextStyle(
-                                          color: Colors.grey, fontSize: 12)),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  // DÜZENLEME BUTONU
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined,
-                                        size: 18, color: Colors.amberAccent),
-                                    onPressed: () => _showCourseFormDialog(
-                                        context,
-                                        course: course),
-                                  ),
-                                  // SİLME BUTONU
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 18, color: Colors.redAccent),
-                                    onPressed: () =>
-                                        provider.removeCourse(course.id),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            leading: Container(
+              width: 4,
+              height: 50,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(4),
               ),
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showCourseDetailDialog(BuildContext context, Course course) {
-    final provider = Provider.of<AppProvider>(context, listen: false);
-    final classLinkController = TextEditingController(text: course.classLink);
-    final driveLinkController = TextEditingController(text: course.driveLink);
-
-    List<GradeItem> currentItems = course.gradeItems
-        .map((e) => GradeItem(name: e.name, weight: e.weight, score: e.score))
-        .toList();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) {
-          double totalWeight = 0;
-          double weightedScoreSum = 0;
-
-          for (var item in currentItems) {
-            totalWeight += item.weight;
-            if (item.score != null) {
-              weightedScoreSum += (item.score! * (item.weight / 100.0));
-            }
-          }
-
-          String calculateLetter(double score) {
-            if (score >= 90) return 'AA';
-            if (score >= 85) return 'BA';
-            if (score >= 80) return 'BB';
-            if (score >= 75) return 'CB';
-            if (score >= 70) return 'CC';
-            if (score >= 60) return 'DC';
-            if (score >= 50) return 'DD';
-            return 'FF';
-          }
-
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1E2638),
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -569,230 +278,701 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   child: Text(
                     course.title,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18),
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.amberAccent),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _showCourseFormDialog(context, course: course);
-                  },
-                ),
+                if (gpa != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6C5CE7).withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${isEn ? 'Avg' : 'Ort'}: ${gpa.toStringAsFixed(1)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
               ],
             ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                      '${course.day} ${course.startTime} - ${course.endTime} | ${course.room}',
-                      style: const TextStyle(color: Colors.grey)),
-                  Text('Akademisyen: ${course.instructor}',
-                      style: const TextStyle(color: Colors.grey)),
-                  const Divider(color: Colors.white24, height: 24),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_getTranslatedDay(course.day, isEn)} | ${course.startTime} - ${course.endTime}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                if (course.room.isNotEmpty) ...[
+                  const SizedBox(height: 2),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('📊 Not & Etki Oranları',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                      TextButton.icon(
-                        icon: const Icon(Icons.add_circle_outline,
-                            size: 16, color: Color(0xFF6C5CE7)),
-                        label: const Text('Kriter Ekle',
-                            style: TextStyle(
-                                color: Color(0xFF6C5CE7), fontSize: 12)),
-                        onPressed: () {
-                          setState(() {
-                            currentItems
-                                .add(GradeItem(name: 'Quiz', weight: 10));
-                          });
-                        },
+                      Icon(
+                        course.isOnline
+                            ? Icons.video_camera_front_rounded
+                            : Icons.location_on_rounded,
+                        size: 14,
+                        color: course.isOnline
+                            ? const Color(0xFF00CEC9)
+                            : Colors.grey,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        course.room,
+                        style: TextStyle(
+                          color: course.isOnline
+                              ? const Color(0xFF00CEC9)
+                              : Colors.grey,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  ...currentItems.asMap().entries.map((entry) {
-                    int idx = entry.key;
-                    GradeItem item = entry.value;
+                ],
+              ],
+            ),
+            trailing: PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white54),
+              color: const Color(0xFF1E2638),
+              onSelected: (value) {
+                if (value == 'grades') {
+                  _showGradeDialog(context, course, isEn: isEn);
+                } else if (value == 'edit') {
+                  _showAddOrEditCourseDialog(
+                    context,
+                    course: course,
+                    isEn: isEn,
+                  );
+                } else if (value == 'delete') {
+                  _confirmDelete(context, course.id, isEn: isEn);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'grades',
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calculate_outlined,
+                        color: Color(0xFF00CEC9),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isEn ? 'Grades' : 'Not Hesapla',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit, color: Colors.white70, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        isEn ? 'Edit' : 'Düzenle',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.delete,
+                        color: Colors.redAccent,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isEn ? 'Delete' : 'Sil',
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              initialValue: item.name,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
-                              decoration: const InputDecoration(
-                                  hintText: 'Başlık', isDense: true),
-                              onChanged: (val) => item.name = val,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              initialValue: item.weight.toStringAsFixed(0),
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
-                              decoration: const InputDecoration(
-                                  hintText: '%',
-                                  suffixText: '%',
-                                  isDense: true),
-                              onChanged: (val) {
-                                setState(() {
-                                  item.weight = double.tryParse(val) ?? 0;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              initialValue: item.score?.toString() ?? '',
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
-                              decoration: const InputDecoration(
-                                  hintText: 'Not', isDense: true),
-                              onChanged: (val) {
-                                setState(() {
-                                  item.score = double.tryParse(val);
-                                });
-                              },
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline,
-                                color: Colors.redAccent, size: 18),
-                            onPressed: () {
-                              setState(() {
-                                currentItems.removeAt(idx);
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6C5CE7).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: totalWeight == 100
-                            ? Colors.transparent
-                            : Colors.orangeAccent,
-                      ),
-                    ),
-                    child: Column(
+  Widget _buildTimetableGrid(List<Course> allCourses, bool isEn) {
+    final filteredCourses = _getFilteredCourses(allCourses, isEn);
+    final weekDaysOriginal = [
+      'Pazartesi',
+      'Salı',
+      'Çarşamba',
+      'Perşembe',
+      'Cuma',
+      'Cumartesi',
+      'Pazar',
+    ];
+    final weekDaysDisplay = isEn
+        ? [
+            'Monday',
+            'Tuesday',
+            'Wednesday',
+            'Thursday',
+            'Friday',
+            'Saturday',
+            'Sunday',
+          ]
+        : weekDaysOriginal;
+
+    final hours = [
+      '08:00',
+      '09:00',
+      '10:00',
+      '11:00',
+      '12:00',
+      '13:00',
+      '14:00',
+      '15:00',
+      '16:00',
+      '17:00',
+      '18:00',
+      '19:00',
+      '20:00',
+      '21:00',
+      '22:00',
+      '23:00',
+      '00:00',
+    ];
+
+    const double hourColWidth = 55.0;
+    const double dayColWidth = 110.0;
+    const double hourRowHeight = 50.0;
+    final double totalTableWidth =
+        hourColWidth + (dayColWidth * weekDaysOriginal.length) + 24.0;
+
+    return Card(
+      color: const Color(0xFF1E2638),
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: totalTableWidth,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Tahmini Ortalama:',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 13)),
-                            Text(
-                              '${weightedScoreSum.toStringAsFixed(1)} / 100',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Harf Notu:',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 13)),
-                            Text(
-                              calculateLetter(weightedScoreSum),
-                              style: const TextStyle(
-                                  color: Color(0xFF6C5CE7),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16),
-                            ),
-                          ],
-                        ),
-                        if (totalWeight != 100) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '⚠️ Toplam etki yüzdesi %${totalWeight.toStringAsFixed(0)} (100 olmalı)',
+                        SizedBox(
+                          width: hourColWidth,
+                          child: Text(
+                            isEn ? 'Hour' : 'Saat',
                             style: const TextStyle(
-                                color: Colors.orangeAccent, fontSize: 10),
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
                           ),
-                        ],
+                        ),
+                        ...weekDaysDisplay.map(
+                          (d) => SizedBox(
+                            width: dayColWidth,
+                            child: Center(
+                              child: Text(
+                                d,
+                                style: TextStyle(
+                                  color: _selectedDayFilter == d
+                                      ? const Color(0xFF6C5CE7)
+                                      : Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
+                    const Divider(color: Colors.white12, height: 16),
+                    SizedBox(
+                      height: hours.length * hourRowHeight,
+                      child: Stack(
+                        children: [
+                          Column(
+                            children: hours
+                                .map(
+                                  (h) => SizedBox(
+                                    height: hourRowHeight,
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: hourColWidth,
+                                          child: Text(
+                                            h,
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Container(
+                                            decoration: const BoxDecoration(
+                                              border: Border(
+                                                top: BorderSide(
+                                                  color: Colors.white10,
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          ...filteredCourses.map((course) {
+                            final dayIdx = weekDaysOriginal.indexOf(course.day);
+                            if (dayIdx == -1) return const SizedBox.shrink();
+
+                            final startMinutes = _timeToMinutes(
+                              course.startTime,
+                            );
+                            final endMinutes = _timeToMinutes(course.endTime);
+                            if (startMinutes == null ||
+                                endMinutes == null ||
+                                endMinutes <= startMinutes) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final topOffset =
+                                ((startMinutes - (8 * 60)) / 60.0) *
+                                hourRowHeight;
+                            final durationInMins = endMinutes - startMinutes;
+                            final cardHeight =
+                                (durationInMins / 60.0) * hourRowHeight;
+
+                            if (topOffset < 0 ||
+                                topOffset >= hours.length * hourRowHeight) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final color = _getCourseColor(course.title);
+
+                            return Positioned(
+                              left: hourColWidth + (dayIdx * dayColWidth) + 3,
+                              top: topOffset,
+                              width: dayColWidth - 6,
+                              height: (() {
+                                final remainingHeight =
+                                    (hours.length * hourRowHeight) - topOffset;
+                                final visibleHeight = cardHeight > remainingHeight
+                                    ? remainingHeight
+                                    : cardHeight;
+
+                                return visibleHeight > 2
+                                    ? visibleHeight - 2
+                                    : visibleHeight;
+                              })(),
+                              child: GestureDetector(
+                                onTap: () => _showCourseDetailDialog(
+                                  context,
+                                  course,
+                                  isEn: isEn,
+                                ),
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: cardHeight < 40 ? 2 : 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: color,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final compact =
+                                          constraints.maxHeight < 65;
+
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            course.title,
+                                            maxLines: compact ? 1 : 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: color,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                          if (!compact) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${course.startTime} - ${course.endTime}',
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 9,
+                                              ),
+                                            ),
+                                          ],
+                                          if (!compact &&
+                                              course.room.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  course.isOnline
+                                                      ? Icons
+                                                            .video_camera_front_rounded
+                                                      : Icons
+                                                            .location_on_rounded,
+                                                  size: 9,
+                                                  color: color,
+                                                ),
+                                                const SizedBox(width: 2),
+                                                Expanded(
+                                                  child: Text(
+                                                    course.room,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.grey,
+                                                      fontSize: 9,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  String _localizedGradeItemName(String name, bool isEn) {
+    final normalized = name.trim().toLowerCase();
+
+    if (normalized == 'vize' || normalized == 'midterm') {
+      return isEn ? 'Midterm' : 'Vize';
+    }
+
+    if (normalized == 'final') {
+      return 'Final';
+    }
+
+    if (normalized == 'quiz / ödev' ||
+        normalized == 'quiz / assignment' ||
+        normalized == 'quiz') {
+      return isEn ? 'Quiz / Assignment' : 'Quiz / Ödev';
+    }
+
+    return name;
+  }
+
+  void _showGradeDialog(
+    BuildContext context,
+    Course course, {
+    required bool isEn,
+  }) {
+    final editableItems = course.gradeItems
+        .map(
+          (item) => GradeItem(
+            name: item.name,
+            weight: item.weight,
+            score: item.score,
+          ),
+        )
+        .toList();
+
+    final weightControllers = editableItems
+        .map((item) => TextEditingController(text: item.weight.toString()))
+        .toList();
+
+    final scoreControllers = editableItems
+        .map(
+          (item) => TextEditingController(
+            text: item.score?.toString() ?? '',
+          ),
+        )
+        .toList();
+
+    final nameControllers = editableItems
+        .map(
+          (item) => TextEditingController(
+            text: _localizedGradeItemName(item.name, isEn),
+          ),
+        )
+        .toList();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setState) {
+          final average = _calculateGradeAverage(editableItems);
+          final letterGrade =
+              average != null ? _calculateLetterGrade(average) : null;
+
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E2638),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${course.title} - ${isEn ? 'Grades' : 'Notlar'}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
                   ),
-                  const Divider(color: Colors.white24, height: 24),
-                  const Text('🔗 Ders Bağlantıları & Materyal',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: classLinkController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                        labelText: 'Online Ders Linki (Zoom/Teams)',
-                        labelStyle: TextStyle(color: Colors.grey)),
+                ),
+                if (average != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${isEn ? 'Avg' : 'Ort'}: ${average.toStringAsFixed(1)}',
+                        style: const TextStyle(
+                          color: Color(0xFF00CEC9),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${isEn ? 'Grade' : 'Harf'}: $letterGrade',
+                        style: const TextStyle(
+                          color: Color(0xFF6C5CE7),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: driveLinkController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                        labelText: 'Ders Materyali / Drive Linki',
-                        labelStyle: TextStyle(color: Colors.grey)),
-                  ),
-                ],
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: editableItems.length,
+                itemBuilder: (context, index) {
+                  final item = editableItems[index];
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: nameControllers[index],
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: isEn ? 'Type' : 'Tür',
+                              labelStyle: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 10,
+                              ),
+                            ),
+                            onChanged: (value) {
+                              item.name = value.trim();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: weightControllers[index],
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: isEn ? 'Weight %' : 'Ağırlık %',
+                              labelStyle: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 10,
+                              ),
+                            ),
+                            onChanged: (value) {
+                              final parsed = double.tryParse(value);
+                              if (parsed != null && parsed >= 0) {
+                                item.weight = parsed;
+                                setState(() {});
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: scoreControllers[index],
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: isEn ? 'Score' : 'Not',
+                              labelStyle: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 10,
+                              ),
+                            ),
+                            onChanged: (value) {
+                              final parsed = double.tryParse(value);
+                              item.score =
+                                  parsed?.clamp(0, 100).toDouble();
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: isEn ? 'Delete' : 'Sil',
+                          onPressed: editableItems.length <= 1
+                              ? null
+                              : () {
+                                  editableItems.removeAt(index);
+                                  nameControllers.removeAt(index);
+                                  weightControllers.removeAt(index);
+                                  scoreControllers.removeAt(index);
+                                  setState(() {});
+                                },
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            color: editableItems.length <= 1
+                                ? Colors.white24
+                                : Colors.redAccent,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('İptal',
-                      style: TextStyle(color: Colors.grey))),
+                onPressed: () {
+                  final defaultName =
+                      isEn ? 'Quiz / Assignment' : 'Quiz / Ödev';
+
+                  editableItems.add(
+                    GradeItem(
+                      name: defaultName,
+                      weight: 10,
+                    ),
+                  );
+                  nameControllers.add(
+                    TextEditingController(text: defaultName),
+                  );
+                  weightControllers.add(
+                    TextEditingController(text: '10.0'),
+                  );
+                  scoreControllers.add(TextEditingController());
+                  setState(() {});
+                },
+                child: Text(
+                  isEn ? '+ Add Grade Item' : '+ Not Kalemi Ekle',
+                  style: const TextStyle(color: Color(0xFF6C5CE7)),
+                ),
+              ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6C5CE7)),
-                onPressed: () {
-                  final updatedCourse = Course(
-                    id: course.id,
-                    title: course.title,
-                    instructor: course.instructor,
-                    instructorEmail: course.instructorEmail,
-                    room: course.room,
-                    day: course.day,
-                    startTime: course.startTime,
-                    endTime: course.endTime,
-                    duration: course.duration,
-                    isOnline: course.isOnline,
-                    akts: course.akts,
-                    classLink: classLinkController.text,
-                    driveLink: driveLinkController.text,
-                    gradeItems: currentItems,
-                  );
-                  provider.updateCourse(updatedCourse);
-                  Navigator.pop(ctx);
+                  backgroundColor: const Color(0xFF6C5CE7),
+                ),
+                onPressed: () async {
+                  for (var i = 0; i < editableItems.length; i++) {
+                    final name = nameControllers[i].text.trim();
+                    editableItems[i].name =
+                        name.isEmpty ? (isEn ? 'Grade Item' : 'Not Kalemi') : name;
+                  }
+
+                  course.gradeItems = editableItems;
+                  await Provider.of<AppProvider>(
+                    dialogContext,
+                    listen: false,
+                  ).updateCourse(course);
+
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                  }
                 },
-                child:
-                    const Text('Kaydet', style: TextStyle(color: Colors.white)),
+                child: Text(
+                  isEn ? 'Save' : 'Kaydet',
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
             ],
           );
@@ -801,30 +981,230 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  void _showCourseFormDialog(BuildContext context, {Course? course}) {
-    final provider = Provider.of<AppProvider>(context, listen: false);
-    final isEditing = course != null;
+  double? _calculateGradeAverage(List<GradeItem> items) {
+    double totalWeightedScore = 0.0;
+    double totalWeight = 0.0;
 
-    final titleController = TextEditingController(text: course?.title ?? '');
-    final instructorController =
-        TextEditingController(text: course?.instructor ?? '');
-    final roomController = TextEditingController(text: course?.room ?? '');
-    final startTimeController =
-        TextEditingController(text: course?.startTime ?? '09:00');
-    final endTimeController =
-        TextEditingController(text: course?.endTime ?? '11:50');
+    for (final item in items) {
+      if (item.score != null && item.weight > 0) {
+        totalWeightedScore += item.score! * item.weight;
+        totalWeight += item.weight;
+      }
+    }
 
-    String selectedDay = course?.day ?? 'Pazartesi';
-    bool isOnline = course?.isOnline ?? false;
+    if (totalWeight == 0) {
+      return null;
+    }
 
+    return totalWeightedScore / totalWeight;
+  }
+
+  String _calculateLetterGrade(double average) {
+    if (average >= 90) return 'AA';
+    if (average >= 85) return 'BA';
+    if (average >= 80) return 'BB';
+    if (average >= 75) return 'CB';
+    if (average >= 70) return 'CC';
+    if (average >= 65) return 'DC';
+    if (average >= 60) return 'DD';
+    if (average >= 50) return 'FD';
+    return 'FF';
+  }
+
+  double? _calculateCourseAverage(Course course) {
+    return _calculateGradeAverage(course.gradeItems);
+  }
+
+  void _showCourseDetailDialog(
+    BuildContext context,
+    Course course, {
+    required bool isEn,
+  }) {
     showDialog(
       context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E2638),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          course.title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${isEn ? 'Day & Time' : 'Gün & Saat'}: ${_getTranslatedDay(course.day, isEn)} | ${course.startTime} - ${course.endTime}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            Text(
+              '${isEn ? 'Room' : 'Sınıf / Ortam'}: ${course.room}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            Text(
+              '${isEn ? 'Instructor' : 'Akademisyen'}: ${course.instructor} (${course.instructorEmail})',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            Text(
+              'AKTS: ${course.akts}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const Divider(color: Colors.white24, height: 16),
+            if (course.classLink.isNotEmpty)
+              Text(
+                '${isEn ? 'Online Link' : 'Canlı Ders Linki'}: ${course.classLink}',
+                style: const TextStyle(color: Color(0xFF00CEC9)),
+              ),
+            if (course.driveLink.isNotEmpty)
+              Text(
+                '${isEn ? 'Drive Material' : 'Drive / Materyal'}: ${course.driveLink}',
+                style: const TextStyle(color: Color(0xFF4A90E2)),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(
+              Icons.calculate_outlined,
+              color: Color(0xFF00CEC9),
+            ),
+            label: Text(
+              isEn ? 'Grades' : 'Notlar',
+              style: const TextStyle(color: Color(0xFF00CEC9)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showGradeDialog(context, course, isEn: isEn);
+            },
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.edit, color: Color(0xFF6C5CE7)),
+            label: Text(
+              isEn ? 'Edit' : 'Düzenle',
+              style: const TextStyle(color: Color(0xFF6C5CE7)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showAddOrEditCourseDialog(context, course: course, isEn: isEn);
+            },
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.delete, color: Colors.redAccent),
+            label: Text(
+              isEn ? 'Delete' : 'Sil',
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _confirmDelete(context, course.id, isEn: isEn);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(
+    BuildContext context,
+    String courseId, {
+    required bool isEn,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E2638),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          isEn ? 'Delete Course?' : 'Ders Silinsin mi?',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          isEn
+              ? 'Are you sure you want to delete this course?'
+              : 'Bu dersi programınızdan silmek istediğinize emin misiniz?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              isEn ? 'Cancel' : 'İptal',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              Provider.of<AppProvider>(
+                context,
+                listen: false,
+              ).removeCourse(courseId);
+              Navigator.pop(ctx);
+            },
+            child: Text(
+              isEn ? 'Delete' : 'Sil',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddOrEditCourseDialog(
+    BuildContext context, {
+    Course? course,
+    required bool isEn,
+  }) {
+    final isEditing = course != null;
+    final titleController = TextEditingController(
+      text: isEditing ? course.title : '',
+    );
+    final roomController = TextEditingController(
+      text: isEditing ? course.room : '',
+    );
+    final instructorController = TextEditingController(
+      text: isEditing ? course.instructor : '',
+    );
+    final emailController = TextEditingController(
+      text: isEditing ? course.instructorEmail : '',
+    );
+    final classLinkController = TextEditingController(
+      text: isEditing ? course.classLink : '',
+    );
+    final driveLinkController = TextEditingController(
+      text: isEditing ? course.driveLink : '',
+    );
+    final aktsController = TextEditingController(
+      text: isEditing ? course.akts.toString() : '4',
+    );
+    final startTimeController = TextEditingController(
+      text: isEditing ? course.startTime : '09:00',
+    );
+    final endTimeController = TextEditingController(
+      text: isEditing ? course.endTime : '11:50',
+    );
+
+    String selectedDay = isEditing ? course.day : 'Pazartesi';
+    bool isOnline = isEditing ? course.isOnline : false;
+
+    showDialog<void>(
+      context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
+        builder: (dialogContext, setState) => AlertDialog(
           backgroundColor: const Color(0xFF1E2638),
-          title: Text(isEditing ? 'Dersi Düzenle' : 'Yeni Ders Ekle',
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            isEditing
+                ? (isEn ? 'Edit Course' : 'Dersi Düzenle')
+                : (isEn ? 'Add New Course' : 'Yeni Ders Ekle'),
+            style: const TextStyle(color: Colors.white),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -832,112 +1212,268 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 TextField(
                   controller: titleController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                      labelText: 'Ders Adı',
-                      labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: InputDecoration(
+                    labelText: isEn ? 'Course Title' : 'Ders Adı',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                  ),
                 ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: instructorController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                      labelText: 'Akademisyen Adı',
-                      labelStyle: TextStyle(color: Colors.grey)),
-                ),
-                const SizedBox(height: 8),
                 TextField(
                   controller: roomController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                      labelText: 'Derslik / Sınıf',
-                      labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: InputDecoration(
+                    labelText: isEn ? 'Room / Classroom' : 'Sınıf / Derslik',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                  ),
                 ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: selectedDay,
-                  dropdownColor: const Color(0xFF1E2638),
+                TextField(
+                  controller: instructorController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: isEn ? 'Instructor' : 'Akademisyen',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: isEn
+                        ? 'Instructor Email'
+                        : 'Akademisyen E-posta',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    isEn ? 'Online Course' : 'Online Ders',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  value: isOnline,
+                  activeColor: const Color(0xFF6C5CE7),
+                  onChanged: (val) {
+                    setState(() => isOnline = val ?? false);
+                  },
+                ),
+                if (isOnline)
+                  TextField(
+                    controller: classLinkController,
+                    keyboardType: TextInputType.url,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: isEn
+                          ? 'Online Course Link'
+                          : 'Online Ders Linki (Teams/Zoom)',
+                      labelStyle: const TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                TextField(
+                  controller: driveLinkController,
+                  keyboardType: TextInputType.url,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: isEn
+                        ? 'Drive / Material Link'
+                        : 'Drive / Materyal Linki',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+                TextField(
+                  controller: aktsController,
+                  keyboardType: TextInputType.number,
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
-                      labelText: 'Gün',
-                      labelStyle: TextStyle(color: Colors.grey)),
-                  items: alldays
-                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                      .toList(),
+                    labelText: 'AKTS',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButton<String>(
+                  value: selectedDay,
+                  dropdownColor: const Color(0xFF1E2638),
+                  isExpanded: true,
+                  style: const TextStyle(color: Colors.white),
+                  items:
+                      [
+                            'Pazartesi',
+                            'Salı',
+                            'Çarşamba',
+                            'Perşembe',
+                            'Cuma',
+                            'Cumartesi',
+                            'Pazar',
+                          ]
+                          .map(
+                            (day) => DropdownMenuItem(
+                              value: day,
+                              child: Text(_getTranslatedDay(day, isEn)),
+                            ),
+                          )
+                          .toList(),
                   onChanged: (val) {
                     if (val != null) setState(() => selectedDay = val);
                   },
                 ),
-                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: startTimeController,
+                        readOnly: true,
+                        onTap: () =>
+                            _pickTime(dialogContext, startTimeController),
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                            labelText: 'Başlangıç (09:00)',
-                            labelStyle: TextStyle(color: Colors.grey)),
+                        decoration: InputDecoration(
+                          labelText: isEn ? 'Start' : 'Başlangıç',
+                          suffixIcon: const Icon(
+                            Icons.access_time,
+                            color: Color(0xFF6C5CE7),
+                          ),
+                          labelStyle: const TextStyle(color: Colors.grey),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
                         controller: endTimeController,
+                        readOnly: true,
+                        onTap: () =>
+                            _pickTime(dialogContext, endTimeController),
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                            labelText: 'Bitiş (11:50)',
-                            labelStyle: TextStyle(color: Colors.grey)),
+                        decoration: InputDecoration(
+                          labelText: isEn ? 'End' : 'Bitiş',
+                          suffixIcon: const Icon(
+                            Icons.access_time,
+                            color: Color(0xFF6C5CE7),
+                          ),
+                          labelStyle: const TextStyle(color: Colors.grey),
+                        ),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Online Ders mi?',
-                      style: TextStyle(color: Colors.white, fontSize: 14)),
-                  value: isOnline,
-                  activeColor: const Color(0xFF6C5CE7),
-                  onChanged: (val) => setState(() => isOnline = val),
                 ),
               ],
             ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child:
-                    const Text('İptal', style: TextStyle(color: Colors.grey))),
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                isEn ? 'Cancel' : 'İptal',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6C5CE7)),
-              onPressed: () {
-                if (titleController.text.isNotEmpty) {
-                  final newCourse = Course(
-                    id: isEditing ? course.id : '',
-                    title: titleController.text,
-                    instructor: instructorController.text,
-                    room: roomController.text,
-                    day: selectedDay,
-                    startTime: startTimeController.text,
-                    endTime: endTimeController.text,
-                    duration: '2s 50dk',
-                    isOnline: isOnline,
-                  );
+                backgroundColor: const Color(0xFF6C5CE7),
+              ),
+              onPressed: () async {
+                final title = titleController.text.trim();
+                final startTime = startTimeController.text.trim();
+                final endTime = endTimeController.text.trim();
+                final startMinutes = _timeToMinutes(startTime);
+                final endMinutes = _timeToMinutes(endTime);
 
-                  if (isEditing) {
-                    provider.updateCourse(newCourse);
-                  } else {
-                    provider.addCourse(newCourse);
-                  }
-                  Navigator.pop(ctx);
+                if (title.isEmpty) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isEn
+                            ? 'Course title cannot be empty.'
+                            : 'Ders adı boş bırakılamaz.',
+                      ),
+                    ),
+                  );
+                  return;
                 }
+
+                if (startMinutes == null ||
+                    endMinutes == null ||
+                    endMinutes <= startMinutes) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isEn
+                            ? 'Enter a valid time range in HH:mm format.'
+                            : 'Saatleri HH:mm formatında ve geçerli bir aralık olarak girin.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                final newCourse = Course(
+                  id: isEditing
+                      ? course.id
+                      : DateTime.now().millisecondsSinceEpoch.toString(),
+                  title: title,
+                  instructor: instructorController.text.trim(),
+                  instructorEmail: emailController.text.trim(),
+                  room: roomController.text.trim(),
+                  day: selectedDay,
+                  startTime: startTime,
+                  endTime: endTime,
+                  duration: _calculateDurationText(startTime, endTime),
+                  isOnline: isOnline,
+                  classLink: classLinkController.text.trim(),
+                  driveLink: driveLinkController.text.trim(),
+                  akts: int.tryParse(aktsController.text.trim()) ?? 4,
+                  gradeItems: isEditing ? course.gradeItems : null,
+                );
+
+                final provider = Provider.of<AppProvider>(
+                  dialogContext,
+                  listen: false,
+                );
+                if (isEditing) {
+                  await provider.updateCourse(newCourse);
+                } else {
+                  await provider.addCourse(newCourse);
+                }
+
+                if (ctx.mounted) Navigator.pop(ctx);
               },
-              child: Text(isEditing ? 'Güncelle' : 'Ekle',
-                  style: const TextStyle(color: Colors.white)),
+              child: Text(
+                isEditing
+                    ? (isEn ? 'Save' : 'Kaydet')
+                    : (isEn ? 'Add' : 'Ekle'),
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  List<Course> _getFilteredCourses(List<Course> allCourses, bool isEn) {
+    return allCourses.where((c) {
+      final translatedDay = _getTranslatedDay(c.day, isEn);
+      final matchesDay =
+          _selectedDayFilter == 'All' ||
+          _selectedDayFilter == 'Tümü' ||
+          c.day == _selectedDayFilter ||
+          translatedDay == _selectedDayFilter;
+
+      final query = _searchController.text.toLowerCase();
+      final matchesSearch =
+          c.title.toLowerCase().contains(query) ||
+          c.instructor.toLowerCase().contains(query) ||
+          c.room.toLowerCase().contains(query);
+      return matchesDay && matchesSearch;
+    }).toList();
+  }
+
+  Color _getCourseColor(String title) {
+    if (title.contains('EEE')) return const Color(0xFF4A90E2);
+    if (title.contains('BIL321')) return const Color(0xFF00CEC9);
+    if (title.contains('BIL317')) return const Color(0xFFF39C12);
+    if (title.contains('BIL453')) return const Color(0xFF9B59B6);
+    if (title.contains('BIL451')) return const Color(0xFFE84393);
+    if (title.contains('BIL353')) return const Color(0xFF6C5CE7);
+    if (title.contains('GNL')) return const Color(0xFFE67E22);
+    return const Color(0xFF00B894);
   }
 }

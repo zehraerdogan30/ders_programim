@@ -9,27 +9,30 @@ class NotesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
+    final isEn = provider.isEnglish;
 
     return Scaffold(
       backgroundColor: const Color(0xFF141923),
-      appBar: AppBar(
-        title: const Text('Ders Notları', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E2638),
-        elevation: 0,
-      ),
       body: provider.notes.isEmpty
-          ? const Center(child: Text('Henüz not eklenmedi.', style: TextStyle(color: Colors.grey)))
+          ? Center(
+              child: Text(
+                isEn ? 'No notes added yet.' : 'Henüz not eklenmedi.',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: provider.notes.length,
               itemBuilder: (context, index) {
                 final note = provider.notes[index];
+                final displayCourse = note.courseTitle == 'Genel' && isEn ? 'General' : note.courseTitle;
+
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E2638),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(12),
@@ -42,15 +45,20 @@ class NotesScreen extends StatelessWidget {
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6C5CE7).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            note.courseTitle,
-                            style: const TextStyle(color: Color(0xFF6C5CE7), fontSize: 11, fontWeight: FontWeight.bold),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 150),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6C5CE7).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              displayCourse,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Color(0xFF6C5CE7), fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                       ],
@@ -79,25 +87,35 @@ class NotesScreen extends StatelessWidget {
     final titleController = TextEditingController();
     final contentController = TextEditingController();
     final provider = Provider.of<AppProvider>(context, listen: false);
-    String selectedCourse = 'Genel';
+    final isEn = provider.isEnglish;
 
-    List<String> courseTitles = ['Genel', ...provider.courses.map((c) => c.title)];
+    String selectedCourse = isEn ? 'General' : 'Genel';
+    final defaultCourseName = isEn ? 'General' : 'Genel';
 
-    showDialog(
+    List<String> courseTitles = [defaultCourseName, ...provider.courses.map((c) => c.title)];
+
+    showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: const Color(0xFF1E2638),
-          title: const Text('Yeni Not Ekle', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          title: Text(
+            isEn ? 'Add New Note' : 'Yeni Not Ekle',
+            style: const TextStyle(color: Colors.white),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               DropdownButtonFormField<String>(
-                value: selectedCourse,
+                initialValue: selectedCourse,
                 dropdownColor: const Color(0xFF1E2638),
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'İlişkili Ders', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: InputDecoration(
+                  labelText: isEn ? 'Related Course' : 'İlişkili Ders',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                ),
                 items: courseTitles.map((title) {
                   return DropdownMenuItem(
                     value: title,
@@ -112,43 +130,59 @@ class NotesScreen extends StatelessWidget {
               TextField(
                 controller: titleController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Başlık', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: InputDecoration(
+                  labelText: isEn ? 'Title' : 'Başlık',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: contentController,
                 maxLines: 3,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Not İçeriği', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: InputDecoration(
+                  labelText: isEn ? 'Note Content' : 'Not İçeriği',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                ),
               ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('İptal', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                isEn ? 'Cancel' : 'İptal',
+                style: const TextStyle(color: Colors.grey),
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C5CE7)),
-              onPressed: () {
-                if (titleController.text.isNotEmpty) {
-                  provider.addNote(
+              onPressed: () async {
+                if (titleController.text.trim().isNotEmpty) {
+                  await provider.addNote(
                     Note(
                       id: '',
-                      title: titleController.text,
-                      content: contentController.text,
+                      title: titleController.text.trim(),
+                      content: contentController.text.trim(),
                       date: DateTime.now().toString(),
-                      courseTitle: selectedCourse,
+                      courseTitle: selectedCourse == 'General' ? 'Genel' : selectedCourse,
                     ),
                   );
-                  Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
                 }
               },
-              child: const Text('Ekle', style: TextStyle(color: Colors.white)),
+              child: Text(
+                isEn ? 'Add' : 'Ekle',
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      titleController.dispose();
+      contentController.dispose();
+    });
   }
 }

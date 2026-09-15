@@ -9,27 +9,30 @@ class TodoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
+    final isEn = provider.isEnglish;
 
     return Scaffold(
       backgroundColor: const Color(0xFF141923),
-      appBar: AppBar(
-        title: const Text('Yapılacaklar & Ödevler', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E2638),
-        elevation: 0,
-      ),
       body: provider.todos.isEmpty
-          ? const Center(child: Text('Henüz görev eklenmedi.', style: TextStyle(color: Colors.grey)))
+          ? Center(
+              child: Text(
+                isEn ? 'No tasks added yet.' : 'Henüz görev eklenmedi.',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: provider.todos.length,
               itemBuilder: (context, index) {
                 final todo = provider.todos[index];
+                final displayCourse = noteCourseTitle(todo.courseTitle, isEn);
+
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E2638),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   ),
                   child: CheckboxListTile(
                     activeColor: const Color(0xFF6C5CE7),
@@ -41,28 +44,31 @@ class TodoScreen extends StatelessWidget {
                         decoration: todo.isCompleted ? TextDecoration.lineThrough : null,
                       ),
                     ),
-                    subtitle: Row(
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.teal.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(4),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              displayCourse,
+                              style: const TextStyle(color: Colors.tealAccent, fontSize: 10),
+                            ),
                           ),
-                          child: Text(
-                            todo.courseTitle,
-                            style: const TextStyle(color: Colors.tealAccent, fontSize: 10),
-                          ),
-                        ),
-                        if (todo.dueDate.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            'Teslim: ${todo.dueDate}',
-                            style: const TextStyle(color: Colors.orangeAccent, fontSize: 11),
-                          ),
+                          if (todo.dueDate.isNotEmpty)
+                            Text(
+                              '${isEn ? 'Due' : 'Teslim'}: ${todo.dueDate}',
+                              style: const TextStyle(color: Colors.orangeAccent, fontSize: 11),
+                            ),
                         ],
-                      ],
+                      ),
                     ),
                     value: todo.isCompleted,
                     onChanged: (val) => provider.toggleTodo(todo.id, val ?? false),
@@ -82,28 +88,43 @@ class TodoScreen extends StatelessWidget {
     );
   }
 
+  String noteCourseTitle(String courseTitle, bool isEn) {
+    if (courseTitle == 'Genel' && isEn) return 'General';
+    return courseTitle;
+  }
+
   void _showAddTodoDialog(BuildContext context) {
     final taskController = TextEditingController();
     final dueDateController = TextEditingController();
     final provider = Provider.of<AppProvider>(context, listen: false);
-    String selectedCourse = 'Genel';
+    final isEn = provider.isEnglish;
 
-    List<String> courseTitles = ['Genel', ...provider.courses.map((c) => c.title)];
+    String selectedCourse = isEn ? 'General' : 'Genel';
+    final defaultCourseName = isEn ? 'General' : 'Genel';
 
-    showDialog(
+    List<String> courseTitles = [defaultCourseName, ...provider.courses.map((c) => c.title)];
+
+    showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: const Color(0xFF1E2638),
-          title: const Text('Yeni Görev / Ödev', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          title: Text(
+            isEn ? 'New Task / Assignment' : 'Yeni Görev / Ödev',
+            style: const TextStyle(color: Colors.white),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               DropdownButtonFormField<String>(
-                value: selectedCourse,
+                initialValue: selectedCourse,
                 dropdownColor: const Color(0xFF1E2638),
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'İlişkili Ders', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: InputDecoration(
+                  labelText: isEn ? 'Related Course' : 'İlişkili Ders',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                ),
                 items: courseTitles.map((title) {
                   return DropdownMenuItem(
                     value: title,
@@ -118,41 +139,57 @@ class TodoScreen extends StatelessWidget {
               TextField(
                 controller: taskController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Görev / Ödev Açıklaması', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: InputDecoration(
+                  labelText: isEn ? 'Task Description' : 'Görev / Ödev Açıklaması',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: dueDateController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Son Teslim Tarihi (Örn: 25 Ekim)', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: InputDecoration(
+                  labelText: isEn ? 'Due Date (e.g. Oct 25)' : 'Son Teslim Tarihi (Örn: 25 Ekim)',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                ),
               ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('İptal', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                isEn ? 'Cancel' : 'İptal',
+                style: const TextStyle(color: Colors.grey),
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C5CE7)),
-              onPressed: () {
-                if (taskController.text.isNotEmpty) {
-                  provider.addTodo(
+              onPressed: () async {
+                if (taskController.text.trim().isNotEmpty) {
+                  await provider.addTodo(
                     Todo(
                       id: '',
-                      task: taskController.text,
-                      courseTitle: selectedCourse,
-                      dueDate: dueDateController.text,
+                      task: taskController.text.trim(),
+                      courseTitle: selectedCourse == 'General' ? 'Genel' : selectedCourse,
+                      dueDate: dueDateController.text.trim(),
                     ),
                   );
-                  Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
                 }
               },
-              child: const Text('Ekle', style: TextStyle(color: Colors.white)),
+              child: Text(
+                isEn ? 'Add' : 'Ekle',
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      taskController.dispose();
+      dueDateController.dispose();
+    });
   }
 }
